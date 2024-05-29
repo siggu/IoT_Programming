@@ -1,0 +1,79 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+
+// 모터 제어 핀 정의
+#define MOTOR_PIN_DIR "/dev/motor_dir"
+#define MOTOR_PIN_SPEED "/dev/motor_speed"
+
+// 버튼 입력 핀 정의
+#define BUTTON_PIN_BASE "/dev/button"
+
+// 디스플레이 제어 핀 정의
+#define DISPLAY_PIN "/dev/display"
+
+// 센서 입력 핀 정의
+#define SENSOR_PIN "/dev/sensor"
+
+// 모터 제어 함수
+void control_motor(int direction, int speed) {
+    int dir_fd = open(MOTOR_PIN_DIR, O_RDWR);
+    int speed_fd = open(MOTOR_PIN_SPEED, O_RDWR);
+
+    if (dir_fd < 0 || speed_fd < 0) {
+        printf("Motor control error\n");
+        exit(1);
+    }
+
+    write(dir_fd, &direction, sizeof(direction));
+    write(speed_fd, &speed, sizeof(speed));
+
+    close(dir_fd);
+    close(speed_fd);
+}
+
+// 버튼 입력 처리 함수
+int read_button(int button_id) {
+    char button_path[50];
+    snprintf(button_path, 50, "%s%d", BUTTON_PIN_BASE, button_id);
+
+    int button_fd = open(button_path, O_RDONLY);
+    if (button_fd < 0) {
+        printf("Button read error\n");
+        exit(1);
+    }
+
+    int value;
+    read(button_fd, &value, sizeof(value));
+
+    close(button_fd);
+    return value;
+}
+
+// 디스플레이 출력 함수
+void display_floor(int floor) {
+    int display_fd = open(DISPLAY_PIN, O_RDWR);
+    if (display_fd < 0) {
+        printf("Display control error\n");
+        exit(1);
+    }
+
+    write(display_fd, &floor, sizeof(floor));
+    close(display_fd);
+}
+
+// 센서 입력 처리 함수
+int read_sensor() {
+    int sensor_fd = open(SENSOR_PIN, O_RDONLY);
+    if (sensor_fd < 0) {
+        printf("Sensor read error\n");
+        exit(1);
+    }
+
+    int value;
+    read(sensor_fd, &value, sizeof(value));
+    close(sensor_fd);
+    return value;
+}

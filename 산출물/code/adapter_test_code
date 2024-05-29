@@ -1,0 +1,75 @@
+//#include <asm/ioctls.h>
+#include <stdio.h>          	// 입출력 관련 
+#include <stdlib.h>         	// 문자열 변환, 메모리 관련 
+#include <string.h>       	    // 문자열 처리 
+#include <time.h>         	    // 시간 관련 
+#include <stdbool.h>
+
+#include <fcntl.h>      // 타겟시스템 입출력 장치 관련 
+#include<sys/types.h> 	// 시스템에서 사용하는 자료형 정보 
+//#include<sys/ioctl.h> 	// 하드웨어의 제어와 상태 정보 
+#include<sys/stat.h> 		// 파일의 상태에 대한 정보 
+//#include <unistd.h>   // POSIX 운영체제 API에 대한 액세스 제공
+
+// Target System
+#define dot "/dev/dot" 		// Dot Matrix
+#define tact "/dev/tactsw" 	// Tact Switch
+#define clcd "/dev/clcd" 	// Character LCD
+#define MESSAGE_NUM 18
+
+int dot_d;
+int tact_d;
+int clcd_d;
+
+int PRINT(char P[]);
+void setup();
+
+// 8층까지의 숫자 패턴 정의
+// 하나의 8바이트는 하나의 도트행임
+const unsigned char numbers[8][8] = {
+    {0b00011000, 0b00111000, 0b00011000, 0b00011000, 0b00011000, 0b00011000, 0b01111110, 0b00000000}, // 1
+    {0b00111100, 0b01100110, 0b00000110, 0b00001100, 0b00110000, 0b01100000, 0b01111110, 0b00000000}, // 2
+    {0b00111100, 0b01100110, 0b00000110, 0b00011100, 0b00000110, 0b01100110, 0b00111100, 0b00000000}, // 3
+    {0b00001100, 0b00011100, 0b00101100, 0b01001100, 0b01111110, 0b00001100, 0b00001100, 0b00000000}, // 4
+    {0b01111110, 0b01100000, 0b01111100, 0b00000110, 0b00000110, 0b01100110, 0b00111100, 0b00000000}, // 5
+    {0b00111100, 0b01100110, 0b01100000, 0b01111100, 0b01100110, 0b01100110, 0b00111100, 0b00000000}, // 6
+    {0b01111110, 0b01100110, 0b00000110, 0b00001100, 0b00011000, 0b00011000, 0b00011000, 0b00000000}, // 7
+    {0b00111100, 0b01100110, 0b01100110, 0b00111100, 0b01100110, 0b01100110, 0b00111100, 0b00000000}, // 8
+};
+
+char* clcd_top[MESSAGE_NUM] =
+{ "press any button" };
+
+void setup() {
+    dot_d = open(dot, O_RDWR);
+    write(dot_d, &numbers[0], sizeof(numbers[0]));//sizeof 안되면 numbers[0]->numbers 시도
+    PRINT(clcd_top);
+    sleep(50000); //이부분은 테스트용임 이후 지울것
+    close(dot_d); //숫자가 사라져버리면 지울 것
+}
+int PRINT(char P[]) {
+    clcd_d = open(clcd, O_RDWR);
+    if (clcd < 0) {
+        perror("clcd 오류");
+        exit(0);
+    }
+    write(clcd_d, P, strlen(P));
+}
+//i는 반복문용
+int main() {
+    int i; //반복문용
+    setuo();
+    dot_d = open(dot, O_RDWR);
+    tact_d = open(tact, O_RDWR);
+    if (dot_d < 0) {
+        perror("dot 오류");
+        exit(0);
+    }
+    if (tact_d < 0) {
+        perror("tact 오류");
+        exit(0);
+    }
+    close(tact_d);
+    close(dot_d);
+    close(clcd_d);
+}

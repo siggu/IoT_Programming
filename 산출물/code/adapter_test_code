@@ -54,6 +54,8 @@ int PRINT(char P[]) {
         exit(0);
     }
     write(clcd_d, P, strlen(P));
+    sleep(3);
+    close(clcd_d);
 }
 //i는 반복문용
 int main() {
@@ -71,5 +73,4 @@ int main() {
     }
     close(tact_d);
     close(dot_d);
-    close(clcd_d);
 }

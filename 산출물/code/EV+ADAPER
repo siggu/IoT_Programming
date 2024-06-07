@@ -1,0 +1,203 @@
+#include <iostream>
+#include <set>
+#include <vector>
+#include <thread>
+#include <chrono>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <wiringPi.h>
+
+#define TACT_SWITCH "/dev/tact_switch"
+
+// 엘리베이터 상태(멈춤, 움직임-위/아래, 문-열림/닫힘)
+enum ElevatorState {
+    STOPPED,
+    MOVING_UP,
+    MOVING_DOWN,
+    DOOR_OPEN,
+    DOOR_CLOSED
+};
+
+// Dot matrix 제어 함수
+void displayFloorOnDotMatrix(int floor) {
+    // 도트 매트릭스 초기화
+    wiringPiSetup();
+    
+    // 도트 매트릭스에 필요한 핀 번호 설정
+    int dataPin = 0; // 데이터 핀 번호
+    int latchPin = 1; // 래치 핀 번호
+    int clockPin = 2; // 클록 핀 번호
+
+    // 핀 모드 설정
+    pinMode(dataPin, OUTPUT);
+    pinMode(latchPin, OUTPUT);
+    pinMode(clockPin, OUTPUT);
+
+    // 도착한 층을 도트 매트릭스에 표시
+    // 예시: 8x8 매트릭스에 숫자를 표시하는 로직을 구현해야 함
+    // 여기에 숫자에 해당하는 매트릭스 패턴을 추가
+
+    // 예시: 숫자 '1'을 도트 매트릭스에 표시하는 패턴
+    uint8_t numberPatterns[9][8] = {
+        {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // Placeholder for 0 (if needed)
+        {0x00, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18}, // 1
+        {0x00, 0x3C, 0x42, 0x02, 0x0C, 0x30, 0x40, 0x7E}, // 2
+        {0x00, 0x7E, 0x02, 0x02, 0x1E, 0x02, 0x02, 0x7E}, // 3
+        {0x00, 0x0E, 0x12, 0x22, 0x42, 0x7E, 0x02, 0x02}, // 4
+        {0x00, 0x7E, 0x40, 0x40, 0x7C, 0x02, 0x02, 0x7C}, // 5
+        {0x00, 0x3E, 0x40, 0x40, 0x7E, 0x42, 0x42, 0x3E}, // 6
+        {0x00, 0x7E, 0x02, 0x04, 0x08, 0x10, 0x20, 0x20}, // 7
+        {0x00, 0x3C, 0x42, 0x42, 0x3C, 0x42, 0x42, 0x3C}, // 8
+    };
+
+    // 현재 층의 패턴을 선택
+    uint8_t* pattern = numberPatterns[floor];
+
+    // 도트 매트릭스에 패턴 전송
+    digitalWrite(latchPin, LOW);
+    for (int i = 0; i < 8; i++) {
+        shiftOut(dataPin, clockPin, MSBFIRST, pattern[i]);
+    }
+    digitalWrite(latchPin, HIGH);
+}
+
+class Elevator {
+public:
+    Elevator(int totalFloors) : currentFloor(1), state(STOPPED), totalFloors(totalFloors) {}
+
+    // 엘리베이터 외부 호출
+    void callElevator(int floor) {
+        if (floor >= 1 && floor <= totalFloors) {
+            if (floor == currentFloor) {
+                openDoor();
+                int selectedFloor = readTactSwitch();
+                if (selectedFloor >= 1 && selectedFloor <= totalFloors && selectedFloor != currentFloor) {
+                    selectFloor(selectedFloor);
+                }
+            } else {
+                targetFloors.insert(floor);
+                updateState();
+            }
+        }
+    }
+
+    // 엘리베이터 내부 층 선택
+    void selectFloor(int floor) {
+        if (floor >= 1 && floor <= totalFloors) {
+            if (floor == currentFloor) {
+                if (targetFloors.find(floor) != targetFloors.end()) {
+                    targetFloors.erase(floor);
+                    if (targetFloors.empty()) {
+                        openDoor();
+                    }
+                }
+            } else {
+                targetFloors.insert(floor);
+                updateState();
+            }
+        }
+    }
+
+    // 엘리베이터 상태 업데이트
+    void updateState() {
+        if (targetFloors.empty()) {
+            state = STOPPED;
+            closeDoor();
+        } else {
+            if (*targetFloors.begin() > currentFloor) {
+                state = MOVING_UP;
+                closeDoor();
+                moveUp();
+            } else if (*targetFloors.begin() < currentFloor) {
+                state = MOVING_DOWN;
+                closeDoor();
+                moveDown();
+            }
+        }
+    }
+
+    // 엘리베이터 위로 이동
+    void moveUp() {
+        while (!targetFloors.empty() && *targetFloors.begin() > currentFloor) {
+            currentFloor++;
+            std::this_thread::sleep_for(std::chrono::seconds(1)); // 층 이동 시 대기 시간
+            displayFloorOnDotMatrix(currentFloor); // 현재 층을 도트 매트릭스에 표시
+        }
+        if (!targetFloors.empty() && *targetFloors.begin() == currentFloor) {
+            targetFloors.erase(targetFloors.begin());
+            openDoor();
+        }
+        updateState();
+    }
+
+    // 엘리베이터 아래로 이동
+    void moveDown() {
+        while (!targetFloors.empty() && *targetFloors.begin() < currentFloor) {
+            currentFloor--;
+            std::this_thread::sleep_for(std::chrono::seconds(1)); // 층 이동 시 대기 시간
+            displayFloorOnDotMatrix(currentFloor); // 현재 층을 도트 매트릭스에 표시
+        }
+        if (!targetFloors.empty() && *targetFloors.begin() == currentFloor) {
+            targetFloors.erase(targetFloors.begin());
+            openDoor();
+        }
+        updateState();
+    }
+
+    // 엘리베이터 문 열기
+    void openDoor() {
+        state = DOOR_OPEN;
+        std::cout << "Door opened at floor " << currentFloor << std::endl;
+    }
+
+    // 엘리베이터 문 닫기
+    void closeDoor() {
+        state = DOOR_CLOSED;
+        std::cout << "Door closed at floor " << currentFloor << std::endl;
+    }
+
+    int readTactSwitch() {
+        int fd = open(TACT_SWITCH, O_RDONLY);
+        if (fd < 0) {
+            perror("Failed to open tact switch");
+            exit(1);
+        }
+
+        char buffer[2];
+        if (read(fd, buffer, 2) != 2) {
+            perror("Failed to read tact switch");
+            close(fd);
+            exit(1);
+        }
+
+        close(fd);
+        return atoi(buffer);
+    }
+
+private:
+    int currentFloor;
+    ElevatorState state;
+    std::set<int> targetFloors;
+    int totalFloors;
+};
+
+int main() {
+    Elevator elevator(8);
+
+    while (true) {
+        // 외부에서 층을 호출
+        int calledFloor;
+        std::cout << "Enter the floor to call the elevator: ";
+        std::cin >> calledFloor;
+        elevator.callElevator(calledFloor);
+
+        // 내부에서 층을 선택
+        int selectedFloor;
+        std::cout << "Enter the floor to go: ";
+        std::cin >> selectedFloor;
+        elevator.selectFloor(selectedFloor);
+    }
+
+    return 0;
+}

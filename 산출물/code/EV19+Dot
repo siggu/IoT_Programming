@@ -1,0 +1,326 @@
+#include <iostream>
+#include <string>
+#include <cstring>
+#include <vector>
+#include <fcntl.h>
+#include <unistd.h>
+#include <algorithm>
+
+#define CLCD "/dev/clcd" // 캐릭터 LCD 장치 경로
+#define DOT "/dev/dot" // 도트 매트릭스 장치 경로
+#define TACT "/dev/tactsw" // 택트 스위치 장치 경로
+#define DIP "/dev/dipsw" // DIP 스위치 장치 경로
+
+#define TIME_QUANTUM 1667 // 시간 퀀텀(마이크로초)
+
+using namespace std;
+
+// 벡터의 내용을 출력하는 함수
+void printVector(const std::vector<int>& vec) {
+    for (size_t i = 0; i < vec.size(); ++i) {
+        printf("%d ", vec[i]);
+    }
+    printf("\n");
+}
+
+// DIP 스위치 입력을 읽어오는 함수
+int getDIP() {
+    unsigned char b;
+    int dip = open(DIP, O_RDONLY);
+    if (dip < 0) {
+        printf("dip device error\n");
+        return -1;
+    }
+    read(dip, &b, sizeof(b));
+    close(dip);
+    switch (b) {
+        case 1: return 1; // 1층 버튼
+        case 2: return 2;
+        case 4: return 3;
+        case 8: return 4;
+        case 16: return 5;
+        case 32: return 6;
+        case 64: return 7;
+        case 128: return 8; // 8층 버튼
+        default: return -1;
+    }
+}
+
+// 택트 스위치 입력을 읽어오는 함수
+int getTACT() {
+    unsigned char b;
+    int tactswFd = open(TACT, O_RDONLY);
+    if (tactswFd < 0) {
+        printf("tact device error\n");
+        return -1;
+    }
+    read(tactswFd, &b, sizeof(b));
+    close(tactswFd);
+    switch (b) {
+        case 1: return 1; // 내부 1번 버튼
+        case 2: return 2; // 내부 2번 버튼
+        case 3: return 200; // 내부 닫기 버튼
+        case 4: return 3;
+        case 5: return 4;
+        case 7: return 5;
+        case 8: return 6;
+        case 10: return 7;
+        case 11: return 8;
+        case 12: return 400; // 내부 종료 버튼
+        default: return -1;
+    }
+}
+
+// 문자열을 CLCD에 출력하는 함수
+void printCLCD(string S) {
+    char* cstr = new char[S.length() + 1];
+    strcpy(cstr, S.c_str());
+    int clcd_fd = open(CLCD, O_WRONLY);
+    write(clcd_fd, cstr, 32);
+    close(clcd_fd);
+    delete[] cstr;
+    printf("CLCD Output: %s\n", S.c_str());
+}
+
+// CLCD에 숫자를 특정 자리수로 포맷팅하여 출력하기 위한 도우미 함수
+string CLCDHelper(int I, int space) {
+    char s[10];
+    sprintf(s, "%d", I);
+    string STR(s);
+
+    while (STR.length() < space) {
+        STR = '0' + STR;
+    }
+    return STR;
+}
+
+// 엘리베이터 이동 중 메시지를 CLCD에 표시
+void EV_moving_CLCD(int current_floor) {
+    string s1 = "  EV is moving  ";
+    string s2 = "Current : " + CLCDHelper(current_floor, 4) + "  ";
+    printCLCD(s1 + s2);
+}
+
+// 엘리베이터 정지 중 메시지를 CLCD에 표시
+void EV_Idle_CLCD(int current_floor) {
+    string s1 = "  EV is stopped ";
+    string s2 = "Current : " + CLCDHelper(current_floor, 4) + "  ";
+    printCLCD(s1 + s2);
+}
+
+// 도트 매트릭스에 데이터를 출력하는 함수
+void printDOT(unsigned char* data) {
+    int dot_fd = open(DOT, O_WRONLY);
+    if (dot_fd < 0) {
+        printf("dot device error\n");
+        return;
+    }
+    write(dot_fd, data, 10);
+    close(dot_fd);
+    printf("DOT Output\n");
+}
+
+// 현재 층을 도트 매트릭스에 표시하는 함수
+void displayFloorOnDOT(int floor) {
+    unsigned char dotData[10] = {0};
+
+    switch (floor) {
+        case 1: memcpy(dotData, "\x3E\x22\x22\x3E\x00\x00\x00\x00\x00\x00", 10); break; // '1' 표시
+        case 2: memcpy(dotData, "\x3E\x02\x3E\x20\x3E\x00\x00\x00\x00\x00", 10); break; // '2' 표시
+        case 3: memcpy(dotData, "\x3E\x02\x3E\x02\x3E\x00\x00\x00\x00\x00", 10); break; // '3' 표시
+        case 4: memcpy(dotData, "\x22\x22\x3E\x02\x02\x00\x00\x00\x00\x00", 10); break; // '4' 표시
+        case 5: memcpy(dotData, "\x3E\x20\x3E\x02\x3E\x00\x00\x00\x00\x00", 10); break; // '5' 표시
+        case 6: memcpy(dotData, "\x3E\x20\x3E\x22\x3E\x00\x00\x00\x00\x00", 10); break; // '6' 표시
+        case 7: memcpy(dotData, "\x3E\x02\x02\x02\x02\x00\x00\x00\x00\x00", 10); break; // '7' 표시
+        case 8: memcpy(dotData, "\x3E\x22\x3E\x22\x3E\x00\x00\x00\x00\x00", 10); break; // '8' 표시
+        default: memset(dotData, 0, 10); break; // 잘못된 층의 경우 디스플레이 클리어
+    }
+    printDOT(dotData);
+}
+
+// 엘리베이터 클래스 정의
+class EV {
+public:
+    int current_floor; // 현재 층
+    vector<int> upArr; // 상승할 층 목록
+    vector<int> downArr; // 하강할 층 목록
+    bool isDirectionUp; // 엘리베이터 방향 플래그
+    bool isMoving; // 엘리베이터 이동 상태 플래그
+
+    // 엘리베이터 생성자
+    EV() {
+        current_floor = 1;
+        isDirectionUp = true;
+        isMoving = false;
+        printf("Elevator initialized at floor %d\n", current_floor);
+        EV_Idle_CLCD(current_floor);
+        displayFloorOnDOT(current_floor);
+    }
+
+    // 목표 층을 목록에 추가하는 함수
+    void addTarget(int floor) {
+        if (floor > current_floor) { 
+            if (find(upArr.begin(), upArr.end(), floor) == upArr.end()) {
+                upArr.push_back(floor);
+                sort(upArr.begin(), upArr.end());
+                printf("Target floor added(upArr): %d\n", floor);
+                printVector(upArr);
+            }
+        } else if (floor < current_floor) {
+            if (find(downArr.begin(), downArr.end(), floor) == downArr.end()) {
+                downArr.push_back(floor);
+                sort(downArr.begin(), downArr.end(), std::greater<int>()); 
+                printf("Target floor added(downArr): %d\n", floor);
+                printVector(downArr);
+            }
+        }
+    }
+
+    // 엘리베이터를 이동시키는 함수
+    void move() {
+        if (upArr.size() + downArr.size() > 0) {
+            printf("Starting to move.\n");
+            printf("upArr : ");
+            printVector(upArr);
+            printf("downArr : ");
+            printVector(downArr);
+            printf("current floor : %d\n", current_floor);
+            if (isMoving) {
+                if (isDirectionUp) {
+                    // 위로 이동
+                    if (current_floor < upArr.front()) {
+                        current_floor++;
+                        EV_moving_CLCD(current_floor);
+                        displayFloorOnDOT(current_floor);
+                        usleep(TIME_QUANTUM);
+                        if (current_floor == upArr.front()) {
+                            upArr.erase(upArr.begin());
+                            isMoving = false;
+                            if (upArr.empty()) {
+                                isDirectionUp = false;
+                                printf("direction Changed(1) (up -> down)\n");
+                            }
+                            EV_Idle_CLCD(current_floor);
+                        }
+                    }
+                    // 현재 층이 목표 층인 경우
+                    else if (current_floor == upArr.front()) {
+                        upArr.erase(upArr.begin());
+                        isMoving = false;
+                        if (upArr.empty()) {
+                            isDirectionUp = false;
+                            printf("direction Changed(2) (up -> down)\n");
+                        }
+                        EV_Idle_CLCD(current_floor);
+                        printf("Arrived at floor: %d\n", current_floor);
+                    }
+                    // 방향을 하강으로 변경
+                    else {
+                        isDirectionUp = false;
+                        printf("direction Changed(3) (up -> down)\n");
+                        current_floor--;
+                        EV_moving_CLCD(current_floor);
+                        displayFloorOnDOT(current_floor);
+                        usleep(TIME_QUANTUM);
+                        if (current_floor == downArr.front()) {
+                            downArr.erase(downArr.begin());
+                            isMoving = false;
+                            if (downArr.empty()) {
+                                isDirectionUp = true;
+                                printf("direction Changed(4) (down -> up)\n");
+                            }
+                            EV_Idle_CLCD(current_floor);
+                            printf("Arrived at floor: %d\n", current_floor);
+                        }
+                    }
+                } else {
+                    // 아래로 이동
+                    if (current_floor > downArr.front()) {
+                        current_floor--;
+                        EV_moving_CLCD(current_floor);
+                        displayFloorOnDOT(current_floor);
+                        usleep(TIME_QUANTUM);
+                        if (current_floor == downArr.front()) {
+                            downArr.erase(downArr.begin());
+                            isMoving = false;
+                            if (downArr.empty()) {
+                                isDirectionUp = true;
+                                printf("direction Changed(5) (down -> up)\n");
+                            }
+                            EV_Idle_CLCD(current_floor);
+                        }
+                    }
+                    // 현재 층이 목표 층인 경우
+                    else if (current_floor == downArr.front()) {
+                        downArr.erase(downArr.begin());
+                        isMoving = false;
+                        if (downArr.empty()) {
+                            isDirectionUp = true;
+                            printf("direction Changed(6) (down -> up)\n");
+                        }
+                        EV_Idle_CLCD(current_floor);
+                        printf("Arrived at floor: %d\n", current_floor);
+                    }
+                    // 방향을 상승으로 변경
+                    else {
+                        isDirectionUp = true;
+                        printf("direction Changed(7) (down -> up)\n");
+                        current_floor++;
+                        EV_moving_CLCD(current_floor);
+                        displayFloorOnDOT(current_floor);
+                        usleep(TIME_QUANTUM);
+                        if (current_floor == upArr.front()) {
+                            upArr.erase(upArr.begin());
+                            isMoving = false;
+                            if (upArr.empty()) {
+                                isDirectionUp = true;
+                                printf("direction Changed(8) (up -> down)\n");
+                            }
+                            EV_Idle_CLCD(current_floor);
+                            printf("Arrived at floor: %d\n", current_floor);
+                        }
+                    }
+                }
+            }
+        } else {
+            printf("no target!\n");
+            printf("upArr : ");
+            printVector(upArr);
+            printf("downArr : ");
+            printVector(downArr);
+            printf("current floor : %d\n", current_floor);
+            printf("isMoving : %d\n", isMoving);
+            printf("isDirectionUp : %d\n", isDirectionUp);
+        }
+    }
+};
+
+// 필요한 설정을 초기화하는 함수
+void init() {}
+
+int main() {
+    EV elevator;
+    while (true) {
+        int dip_input = getDIP(); // DIP 스위치 입력 가져오기
+        int tact_input = getTACT(); // 택트 스위치 입력 가져오기
+
+        if (dip_input != -1) {
+            elevator.addTarget(dip_input); // DIP 입력으로 목표 층 추가
+        }
+
+        if (tact_input == 400) {
+            printf("Program exit command received.\n");
+            break; // 프로그램 종료
+        } else if (tact_input != -1) {
+            if (tact_input == 200) {
+                elevator.isMoving = true; // 엘리베이터 이동 상태 설정
+            } else {
+                elevator.addTarget(tact_input); // 택트 입력으로 목표 층 추가
+            }
+        }
+        if(elevator.isMoving){
+            elevator.move(); // 엘리베이터 이동
+        }
+    }
+    return 3;
+}

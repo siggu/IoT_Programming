@@ -115,25 +115,25 @@ void printDOT(unsigned char* data) {
         printf("dot device error\n");
         return;
     }
-    write(dot_fd, data, 10);
+    write(dot_fd, data, 8);
     close(dot_fd);
     printf("DOT Output\n");
 }
 
 // 현재 층을 도트 매트릭스에 표시하는 함수
 void displayFloorOnDOT(int floor) {
-    unsigned char dotData[10] = {0};
+    unsigned char dotData[8] = {0};
 
     switch (floor) {
-        case 1: memcpy(dotData, "\x3E\x22\x22\x3E\x00\x00\x00\x00\x00\x00", 10); break; // '1' 표시
-        case 2: memcpy(dotData, "\x3E\x02\x3E\x20\x3E\x00\x00\x00\x00\x00", 10); break; // '2' 표시
-        case 3: memcpy(dotData, "\x3E\x02\x3E\x02\x3E\x00\x00\x00\x00\x00", 10); break; // '3' 표시
-        case 4: memcpy(dotData, "\x22\x22\x3E\x02\x02\x00\x00\x00\x00\x00", 10); break; // '4' 표시
-        case 5: memcpy(dotData, "\x3E\x20\x3E\x02\x3E\x00\x00\x00\x00\x00", 10); break; // '5' 표시
-        case 6: memcpy(dotData, "\x3E\x20\x3E\x22\x3E\x00\x00\x00\x00\x00", 10); break; // '6' 표시
-        case 7: memcpy(dotData, "\x3E\x02\x02\x02\x02\x00\x00\x00\x00\x00", 10); break; // '7' 표시
-        case 8: memcpy(dotData, "\x3E\x22\x3E\x22\x3E\x00\x00\x00\x00\x00", 10); break; // '8' 표시
-        default: memset(dotData, 0, 10); break; // 잘못된 층의 경우 디스플레이 클리어
+        case 1: memcpy(dotData, {0b00011000, 0b00111000, 0b00011000, 0b00011000, 0b00011000, 0b00011000, 0b01111110, 0b00000000}, 8); break; // '1' 표시
+        case 2: memcpy(dotData, {0b00111100, 0b01100110, 0b00000110, 0b00001100, 0b00110000, 0b01100000, 0b01111110, 0b00000000}, 8); break; // '2' 표시
+        case 3: memcpy(dotData, {0b00001100, 0b00011100, 0b00101100, 0b01001100, 0b01111110, 0b00001100, 0b00001100, 0b00000000}, 8); break; // '3' 표시
+        case 4: memcpy(dotData, {0b00001100, 0b00011100, 0b00101100, 0b01001100, 0b01111110, 0b00001100, 0b00001100, 0b00000000}, 8); break; // '4' 표시
+        case 5: memcpy(dotData, {0b01111110, 0b01100000, 0b01111100, 0b00000110, 0b00000110, 0b01100110, 0b00111100, 0b00000000}, 8); break; // '5' 표시
+        case 6: memcpy(dotData, {0b00111100, 0b01100110, 0b01100000, 0b01111100, 0b01100110, 0b01100110, 0b00111100, 0b00000000}, 8); break; // '6' 표시
+        case 7: memcpy(dotData, {0b01111110, 0b01100110, 0b00000110, 0b00001100, 0b00011000, 0b00011000, 0b00011000, 0b00000000}, 8); break; // '7' 표시
+        case 8: memcpy(dotData, {0b00111100, 0b01100110, 0b01100110, 0b00111100, 0b01100110, 0b01100110, 0b00111100, 0b00000000}, 8); break; // '8' 표시
+        default: memset(dotData, 0, 8); break; // 잘못된 층의 경우 디스플레이 클리어
     }
     printDOT(dotData);
 }
